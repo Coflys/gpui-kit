@@ -12,11 +12,15 @@ use crate::{
 use gpui::{
     App, AppContext, Bounds, Context, DefiniteLength, DispatchPhase, ElementId, Entity,
     FocusHandle, GlobalElementId, InteractiveElement, IntoElement, MouseMoveEvent,
-    ParentElement as _, Pixels, Render, RenderOnce, Styled, WeakFocusHandle, Window, canvas, div,
+    ParentElement as _, Pixels, Render, RenderOnce, Styled, WeakFocusHandle, Window, canvas, deferred, div,
     prelude::FluentBuilder as _,
 };
 use gpui_base::{TextSelection, TextSelectionScopeId};
 use std::{any::TypeId, rc::Rc};
+
+// Match ShellRoot's toast layer: action results remain above content overlays
+// and popups, while tooltips keep their higher priority.
+const NOTIFICATION_PRIORITY: usize = gpui_base::POPUP_PRIORITY + 1;
 
 pub(crate) fn init(cx: &mut App) {
     gpui_base::Root::register_plugin::<WindowState>(cx, WindowState::new);
@@ -155,14 +159,17 @@ impl WindowState {
         };
 
         Some(
-            div()
-                .absolute()
-                .inset_0()
-                .when_some(mt, |this, offset| this.mt(offset))
-                .when_some(mr, |this, offset| this.mr(offset))
-                .when_some(mb, |this, offset| this.mb(offset))
-                .when_some(ml, |this, offset| this.ml(offset))
-                .child(root.read(cx).notification.clone()),
+            deferred(
+                div()
+                    .absolute()
+                    .inset_0()
+                    .when_some(mt, |this, offset| this.mt(offset))
+                    .when_some(mr, |this, offset| this.mr(offset))
+                    .when_some(mb, |this, offset| this.mb(offset))
+                    .when_some(ml, |this, offset| this.ml(offset))
+                    .child(root.read(cx).notification.clone()),
+            )
+            .with_priority(NOTIFICATION_PRIORITY),
         )
     }
 
