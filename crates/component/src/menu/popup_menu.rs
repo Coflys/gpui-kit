@@ -948,6 +948,12 @@ impl PopupMenu {
         self.menu_items.is_empty()
     }
 
+    /// Bounds of the painted menu surface in window coordinates, including the
+    /// content padding. Zero before the first prepaint of this menu.
+    pub fn painted_bounds(&self) -> Bounds<Pixels> {
+        self.bounds
+    }
+
     fn clickable_menu_items(&self) -> impl Iterator<Item = (usize, &PopupMenuItem)> {
         self.menu_items
             .iter()

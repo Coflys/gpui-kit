@@ -379,3 +379,21 @@ incompatible GPUI type sets. No component or public API changes.
 Validation on Windows: `bun script/check-gpui-pin.ts` passed;
 `cargo metadata --locked --offline --no-deps --format-version 1` passed.
 The consuming NyaTerm workspace checks validate the complete integration.
+
+## 2026-10-30 expose painted overlay bounds for native surfaces
+
+NyaTerm hosts the Windows ActiveX RDP control in a top-level window above the
+GPUI framebuffer, so GPUI menus and dialogs need their real bounds to cut
+matching holes into that host. Add read-only accessors without changing any
+existing layout or paint behavior:
+
+- `PopupMenu::painted_bounds()` returns the menu surface bounds recorded by its
+  existing prepaint hook.
+- `dialog::active_dialog_bounds(window, cx)` returns the top dialog card bounds;
+  the card records them from `on_prepaint` while it is the top layer.
+- `SelectState::popup_bounds()` returns the open dropdown surface bounds.
+
+Validation: the consuming NyaTerm workspace compiles with this checkout
+(`cargo check -p nyaterm-desktop -p nyaterm-activex-helper`), and a live Windows
+ActiveX session keeps the remote desktop updating while the tab context menu,
+the saved-connection menu, and the connection editor dialog are visible.
