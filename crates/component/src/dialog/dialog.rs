@@ -1,12 +1,12 @@
 use super::entrance::{DialogEntrance, EntranceSurface};
 use crate::root::WindowState;
 use gpui_base::TestSupportExt as _;
-use std::{rc::Rc, sync::LazyLock, time::Duration};
+use std::{collections::HashMap, rc::Rc, sync::LazyLock, time::Duration};
 
 use gpui::{
-    Action, Anchor, AnyElement, App, BoxShadow, ClickEvent, Edges, FocusHandle, Hsla,
-    InteractiveElement, IntoElement, ParentElement, Pixels, RenderOnce, SharedString,
-    StyleRefinement, Styled, Window, WindowControlArea, anchored, div, hsla, point,
+    Action, Anchor, AnyElement, App, Bounds, BoxShadow, ClickEvent, Edges, FocusHandle, Global,
+    Hsla, InteractiveElement, IntoElement, ParentElement, Pixels, RenderOnce, SharedString,
+    StyleRefinement, Styled, Window, WindowControlArea, WindowId, anchored, div, hsla, point,
     prelude::FluentBuilder, px,
 };
 use gpui_base::{ElementExt as _, TextSelectionScopeId, motion::Transition};
@@ -23,6 +23,27 @@ use crate::{
 
 pub static ANIMATION_DURATION: LazyLock<Duration> = LazyLock::new(|| Duration::from_secs_f64(0.25));
 pub use gpui_base::actions::{Cancel, Confirm};
+
+#[derive(Default)]
+struct DialogBoundsRegistry(HashMap<WindowId, Bounds<Pixels>>);
+
+impl Global for DialogBoundsRegistry {}
+
+/// Bounds of the topmost dialog card in window coordinates.
+///
+/// Native surfaces hosted above the window (for example an ActiveX control)
+/// need this to keep the dialog visible. Returns `None` while no dialog is
+/// open; the recorded bounds are refreshed on every prepaint of the top layer.
+pub fn active_dialog_bounds(window: &Window, cx: &mut App) -> Option<Bounds<Pixels>> {
+    let state = WindowState::entity(window, cx)?;
+    if state.read(cx).active_dialogs.is_empty() {
+        return None;
+    }
+    cx.default_global::<DialogBoundsRegistry>()
+        .0
+        .get(&window.window_handle().window_id())
+        .copied()
+}
 
 type OkHandler = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App) -> bool + 'static>;
 type CancelHandler = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App) -> bool + 'static>;
@@ -648,6 +669,8 @@ impl RenderOnce for Dialog {
         }
 
         let layer_ix = self.layer_ix;
+        let is_top_dialog =
+            (self.layer_ix + 1) == WindowState::read(window, cx).active_dialogs.len();
         let selection_scope = self.selection_scope;
         let on_close = self.button_props.close_handler();
         let on_ok = self.button_props.ok_handler();
@@ -790,6 +813,16 @@ impl RenderOnce for Dialog {
                                         .w(width)
                                         .when_some(self.props.max_width, |this, w| this.max_w(w))
                                         .max_h(max_height)
+                                        .on_prepaint(move |bounds, window, cx| {
+                                            if is_topmost {
+                                                cx.default_global::<DialogBoundsRegistry>()
+                                                    .0
+                                                    .insert(
+                                                        window.window_handle().window_id(),
+                                                        bounds,
+                                                    );
+                                            }
+                                        })
                                         .child(
                                             v_flex()
                                                 .flex_1()

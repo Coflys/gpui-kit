@@ -1,11 +1,12 @@
 use gpui::{
-    AnyElement, App, ClickEvent, Context, DismissEvent, Edges, ElementId, Entity, EventEmitter,
-    FocusHandle, Focusable, Hsla, InteractiveElement, IntoElement, Length, ParentElement, Render,
-    RenderOnce, SharedString, StatefulInteractiveElement, StyleRefinement, Styled, Window,
-    deferred, div, prelude::FluentBuilder, px, rems,
+    AnyElement, App, Bounds, ClickEvent, Context, DismissEvent, Edges, ElementId, Entity,
+    EventEmitter, FocusHandle, Focusable, Hsla, InteractiveElement, IntoElement, Length,
+    ParentElement, Pixels, Render, RenderOnce, SharedString, StatefulInteractiveElement,
+    StyleRefinement, Styled, Window, deferred, div, prelude::FluentBuilder, px, rems,
 };
 use gpui_base::TestSupportExt as _;
 use rust_i18n::t;
+use std::{cell::Cell, rc::Rc};
 
 use crate::ThemeStyled as _;
 use crate::{
@@ -131,6 +132,8 @@ where
     icon: Option<Icon>,
     title_prefix: Option<SharedString>,
     focus_ring_enabled: bool,
+    /// Last painted bounds of the open dropdown, in window coordinates.
+    popup_bounds: Rc<Cell<Option<Bounds<Pixels>>>>,
 }
 
 /// A Select element.
@@ -296,7 +299,15 @@ where
             icon: None,
             title_prefix: None,
             focus_ring_enabled: true,
+            popup_bounds: Rc::new(Cell::new(None)),
         }
+    }
+
+    /// Bounds of the open dropdown in window coordinates, or `None` while the
+    /// dropdown is closed. Native surfaces hosted above the window use this to
+    /// keep the list visible.
+    pub fn popup_bounds(&self) -> Option<Bounds<Pixels>> {
+        self.popup_bounds.get()
     }
 
     /// Sets whether the dropdown menu is searchable, default is `false`.
@@ -540,6 +551,9 @@ where
         let searchable = self.searchable;
         let is_focused = self.state.focus_handle.is_focused(window);
         let show_clean = self.state.cleanable && self.selected_index(cx).is_some();
+        if !self.state.open {
+            self.popup_bounds.set(None);
+        }
         let bounds = self.state.bounds;
         let allow_open = !(self.state.open || self.state.disabled);
         let outline_visible = self.state.open || (is_focused && !self.state.disabled);
@@ -644,6 +658,10 @@ where
                                     Length::Definite(w) => this.w(w),
                                 })
                                 .popover_style(cx)
+                                .on_prepaint({
+                                    let popup_bounds = self.popup_bounds.clone();
+                                    move |bounds, _, _| popup_bounds.set(Some(bounds))
+                                })
                                 .child(
                                     List::new(&self.state.list)
                                         .when_some(
