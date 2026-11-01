@@ -954,6 +954,22 @@ impl PopupMenu {
         self.bounds
     }
 
+    /// Forget the bounds this menu last painted, and every submenu below it.
+    ///
+    /// A submenu renders only while its row holds the parent's selection, but
+    /// its entity stays alive in the parent's items for as long as the parent
+    /// does, and `bounds` refreshes only on a render that happens. Without this
+    /// a closed branch keeps reporting the rectangle it last painted, which
+    /// makes `painted_bounds()` describe a card that is no longer on screen.
+    fn forget_painted_bounds(&mut self, cx: &mut App) {
+        self.bounds = Bounds::default();
+        for item in &self.menu_items {
+            if let PopupMenuItem::Submenu { menu, .. } = item {
+                menu.update(cx, |menu, cx| menu.forget_painted_bounds(cx));
+            }
+        }
+    }
+
     fn clickable_menu_items(&self) -> impl Iterator<Item = (usize, &PopupMenuItem)> {
         self.menu_items
             .iter()
@@ -1668,13 +1684,16 @@ impl Render for PopupMenu {
         // navigation treat them the same as `submenu()`-built children.
         let parent = cx.entity().downgrade();
         let parent_priority = self.priority;
-        for item in &self.menu_items {
+        for (ix, item) in self.menu_items.iter().enumerate() {
             if let PopupMenuItem::Submenu { menu, .. } = item {
                 if menu.read(cx).parent_menu.is_none() {
                     menu.update(cx, |menu, _| {
                         menu.parent_menu = Some(parent.clone());
                         menu.priority = parent_priority + 1;
                     });
+                }
+                if self.selected_index != Some(ix) {
+                    menu.update(cx, |menu, cx| menu.forget_painted_bounds(cx));
                 }
             }
         }

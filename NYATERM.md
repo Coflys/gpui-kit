@@ -397,3 +397,20 @@ Validation: the consuming NyaTerm workspace compiles with this checkout
 (`cargo check -p nyaterm-desktop -p nyaterm-activex-helper`), and a live Windows
 ActiveX session keeps the remote desktop updating while the tab context menu,
 the saved-connection menu, and the connection editor dialog are visible.
+
+## 2026-11-01 forget the painted bounds of a closed submenu
+
+`PopupMenu::painted_bounds()` exists so a host can cut a hole in a native child
+surface above the framebuffer, which means it has to describe a card that is on
+screen now. A submenu renders only while its row holds the parent's selection,
+but its entity lives in the parent's items for as long as the parent does, and
+`bounds` refreshes on a render that has stopped happening. Moving the selection
+off a submenu therefore kept the last rectangle reported. Clear the bounds of
+every submenu the parent does not render, and of the branches below it, from the
+loop that already wires submenu parents. This mirrors `Select`, which reports
+`popup_bounds()` as `None` once its dropdown closes.
+
+Validation: the consuming NyaTerm workspace test
+`menu::tests::a_closed_submenu_releases_its_native_occlusion_hole` reports two
+occlusion rectangles with the selection off a submenu before this change and one
+after it.
